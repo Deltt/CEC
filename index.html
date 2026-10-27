@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Prototyp</title>
+<title>Tiger Prototyp</title>
 <style>
 /* ============ 1. DESIGN TOKENS (grey wireframe) ============ */
 :root {
   --bg: #efefef; --surface: #fafafa; --line: #cfcfcf;
   --text: #2a2a2a; --muted: #777;
   --fill-strong: #4a4a4a; --fill-mid: #8e8e8e; --fill-soft: #d2d2d2;
+  --interactive-bg: #dde6ee; --interactive-border: #a3b4c4; --interactive-accent: #5d7388;
   --radius: 12px; --gap: 14px; --anim-ms: 450ms;
   color-scheme: light;
 }
@@ -18,6 +19,7 @@
     --bg: #181818; --surface: #232323; --line: #3b3b3b;
     --text: #e6e6e6; --muted: #9a9a9a;
     --fill-strong: #e0e0e0; --fill-mid: #8a8a8a; --fill-soft: #474747;
+    --interactive-bg: #28323c; --interactive-border: #4b5c6d; --interactive-accent: #8ea6bc;
     color-scheme: dark;
   }
 }
@@ -25,6 +27,7 @@
   --bg: #181818; --surface: #232323; --line: #3b3b3b;
   --text: #e6e6e6; --muted: #9a9a9a;
   --fill-strong: #e0e0e0; --fill-mid: #8a8a8a; --fill-soft: #474747;
+  --interactive-bg: #28323c; --interactive-border: #4b5c6d; --interactive-accent: #8ea6bc;
   color-scheme: dark;
 }
 
@@ -40,6 +43,7 @@ h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
 .muted { color: var(--muted); font-size: .85rem; margin: 2px 0 0; }
 .chip { border: 1px dashed var(--line); border-radius: 99px; padding: 3px 10px; font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.card.interactive { background: var(--interactive-bg); border-color: var(--interactive-border); }
 .columns { display: grid; gap: var(--gap); grid-template-columns: 1fr; }
 
 /* ============ 3. KPI ROW ============ */
@@ -53,14 +57,14 @@ h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
 .control { display: grid; gap: 6px; margin-bottom: 16px; }
 .control-head { display: flex; justify-content: space-between; align-items: baseline; }
 .control-value { font-variant-numeric: tabular-nums; font-weight: 600; }
-input[type="range"] { width: 100%; height: 32px; accent-color: var(--fill-strong); }
+input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive-accent); }
 .switch-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
 .switch-row:last-child { padding-bottom: 0; }
 .switch { position: relative; width: 52px; height: 30px; flex: none; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
-.switch-track { position: absolute; inset: 0; border-radius: 99px; background: var(--fill-soft); transition: background var(--anim-ms); }
+.switch-track { position: absolute; inset: 0; border-radius: 99px; background: var(--surface); border: 1px solid var(--interactive-border); transition: background var(--anim-ms); }
 .switch-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); transition: transform var(--anim-ms) cubic-bezier(.3,.8,.3,1); }
-.switch input:checked + .switch-track { background: var(--fill-strong); }
+.switch input:checked + .switch-track { background: var(--interactive-accent); border-color: var(--interactive-accent); }
 .switch input:checked + .switch-track::after { transform: translateX(22px); }
 .switch input:focus-visible + .switch-track, input[type="range"]:focus-visible, .segment button:focus-visible { outline: 2px solid var(--fill-mid); outline-offset: 2px; }
 
@@ -81,8 +85,8 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--fill-strong
 /* ============ 6. DAY CHART ============ */
 .chart-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .chart-head h2 { margin: 0; }
-.segment { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.segment button { font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; background: transparent; color: var(--text); cursor: pointer; transition: background var(--anim-ms); }
+.segment { display: inline-flex; border: 1px solid var(--interactive-border); border-radius: 8px; overflow: hidden; }
+.segment button { font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; background: var(--interactive-bg); color: var(--text); cursor: pointer; transition: background var(--anim-ms); }
 .segment button[aria-pressed="true"] { background: var(--fill-strong); color: var(--surface); }
 .day-chart { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 170px; margin-top: 10px; border-bottom: 1px solid var(--line); }
 .day-column { position: relative; display: flex; flex-direction: column-reverse; height: 100%; }
@@ -105,7 +109,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--fill-strong
 <main class="app">
   <header class="app-header">
     <div>
-      <h1>Customer Experience Center</h1>
+      <h1>Customer Experience Center Prototyp</h1>
       <p class="muted" id="house-label"></p>
     </div>
     <span class="chip">Prototyp mit Platzhalterwerten</span>
@@ -119,7 +123,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--fill-strong
   </section>
 
   <div class="columns">
-    <section class="card" aria-label="Konfiguration">
+    <section class="card interactive" aria-label="Konfiguration">
       <h2>Konfiguration</h2>
       <div class="control">
         <div class="control-head"><label for="input-pv">PV-Leistung</label><span class="control-value" id="output-pv"></span></div>
