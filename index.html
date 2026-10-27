@@ -52,6 +52,10 @@ h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
 .kpi-label { color: var(--muted); font-size: .8rem; }
 .kpi-value { font-size: 1.9rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .kpi-unit { font-size: .9rem; color: var(--muted); margin-left: 3px; font-weight: 400; }
+/* Rolling digits: only characters that change are animated */
+.digit-slot { display: inline-block; overflow: hidden; height: 1.15em; line-height: 1.15; vertical-align: top; }
+.digit-column { display: block; }
+.digit-column > span { display: block; height: 1.15em; }
 
 /* ============ 4. CONTROLS ============ */
 .control { display: grid; gap: 6px; margin-bottom: 16px; }
@@ -88,7 +92,15 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
 .segment { display: inline-flex; border: 1px solid var(--interactive-border); border-radius: 8px; overflow: hidden; }
 .segment button { font: inherit; font-size: .85rem; padding: 6px 14px; border: 0; background: var(--interactive-bg); color: var(--text); cursor: pointer; transition: background var(--anim-ms); }
 .segment button[aria-pressed="true"] { background: var(--fill-strong); color: var(--surface); }
-.day-chart { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 170px; margin-top: 10px; border-bottom: 1px solid var(--line); }
+.axis-title { font-size: .78rem; color: var(--muted); margin-top: 10px; }
+.chart-area { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; margin-top: 14px; }
+.chart-plot { min-width: 0; }
+.y-axis { position: relative; height: 170px; min-width: 2.4rem; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.y-axis span { position: absolute; right: 0; line-height: 1; }
+.y-axis [data-y="top"] { top: 0; transform: translateY(-50%); }
+.y-axis [data-y="mid"] { top: 50%; transform: translateY(-50%); }
+.y-axis [data-y="zero"] { top: 100%; transform: translateY(-50%); }
+.day-chart { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 170px; border-bottom: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 50%; background-repeat: repeat-y; }
 .day-column { position: relative; display: flex; flex-direction: column-reverse; height: 100%; }
 .day-segment { width: 100%; height: 0; transition: height var(--anim-ms) ease; }
 .day-tick { position: absolute; left: -1px; right: -1px; bottom: 0; height: 3px; background: var(--text); transition: bottom var(--anim-ms) ease; }
@@ -155,8 +167,14 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
       </div>
     </div>
     <div class="legend" id="day-legend"></div>
-    <div class="day-chart" id="day-chart"></div>
-    <div class="hour-axis"><span>0 Uhr</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+    <div class="axis-title" id="day-y-title"></div>
+    <div class="chart-area">
+      <div class="y-axis" id="day-y-axis"><span data-y="top"></span><span data-y="mid"></span><span data-y="zero">0</span></div>
+      <div class="chart-plot">
+        <div class="day-chart" id="day-chart"></div>
+        <div class="hour-axis"><span>0 Uhr</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+      </div>
+    </div>
   </section>
 
   <p class="fine-print" id="assumptions"></p>
@@ -199,6 +217,9 @@ const CONFIG = {
   HEAT_PUMP_SAVING_VS_OLD_HEATING_EUR_PER_YEAR: 700,
   MAX_PAYBACK_YEARS_SHOWN: 30,
 
+  // Animation
+  DIGIT_ROLL_MS: 350,
+
   // UI texts
   LABELS: {
     consumptionBar: "Woher kommt der Strom im Haus?",
@@ -207,6 +228,7 @@ const CONFIG = {
     solarParts: ["Direkt genutzt", "In Speicher", "Ins Netz"],
     dayParts: ["Direkt aus Solar", "Aus Speicher", "Aus Netz"],
     dayProduction: "Solarerzeugung",
+    dayYAxisTitle: "Strom pro Stunde (kWh)",
   },
 };
 
@@ -349,41 +371,80 @@ function calculateMetrics(totals) {
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const numberFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const axisFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
 
-function animateNumber(element, targetValue, { decimals = 0, durationMs = 500 } = {}) {
-  const startValue = Number(element.dataset.value || 0);
+function isDigit(character) {
+  return /\d/.test(character);
+}
+
+/* Rolls a single digit slot from oldDigit to newDigit (trend 1 = rolls up, -1 = rolls down). */
+function rollDigit(slot, oldDigit, newDigit, trend) {
+  const column = document.createElement("span");
+  column.className = "digit-column";
+  const order = trend >= 0 ? [oldDigit, newDigit] : [newDigit, oldDigit];
+  order.forEach((digit) => {
+    const cell = document.createElement("span");
+    cell.textContent = digit;
+    column.appendChild(cell);
+  });
+  slot.appendChild(column);
+
+  const frames = trend >= 0
+    ? [{ transform: "translateY(0)" }, { transform: "translateY(-50%)" }]
+    : [{ transform: "translateY(-50%)" }, { transform: "translateY(0)" }];
+  const animation = column.animate(frames, { duration: CONFIG.DIGIT_ROLL_MS, easing: "cubic-bezier(.3, .8, .3, 1)", fill: "forwards" });
+  animation.onfinish = () => {
+    if (slot.firstChild === column) slot.textContent = newDigit;
+  };
+}
+
+/* Updates the text and animates only the digits that differ (digits are compared right-aligned). */
+function setRollingText(element, newText, trend = 1) {
+  const previousText = element.dataset.text ?? element.textContent;
+  element.dataset.text = newText;
+  if (previousText === newText) return;
+  if (prefersReducedMotion) { element.textContent = newText; return; }
+
+  const previousCharacters = [...previousText];
+  const newCharacters = [...newText];
+  element.textContent = "";
+  newCharacters.forEach((character, index) => {
+    const slot = document.createElement("span");
+    slot.className = "digit-slot";
+    const previousCharacter = previousCharacters[previousCharacters.length - newCharacters.length + index] ?? "0";
+    if (isDigit(character) && isDigit(previousCharacter) && previousCharacter !== character) {
+      rollDigit(slot, previousCharacter, character, trend);
+    } else {
+      slot.textContent = character === " " ? "\u00A0" : character;
+    }
+    element.appendChild(slot);
+  });
+}
+
+function setRollingNumber(element, targetValue, { decimals = 0 } = {}) {
   const format = decimals > 0 ? numberFormat : integerFormat;
+  const trend = targetValue >= Number(element.dataset.value ?? 0) ? 1 : -1;
   element.dataset.value = targetValue;
-  if (prefersReducedMotion) { element.textContent = format.format(targetValue); return; }
-  const startTime = performance.now();
-  function step(now) {
-    const progress = Math.min(1, (now - startTime) / durationMs);
-    const eased = 1 - (1 - progress) ** 3;
-    element.textContent = format.format(startValue + (targetValue - startValue) * eased);
-    if (progress < 1 && Number(element.dataset.value) === targetValue) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
+  setRollingText(element, format.format(targetValue), trend);
 }
 
 function renderKpis(metrics) {
   const kpiElement = (name) => document.querySelector(`[data-kpi="${name}"]`);
-  animateNumber(kpiElement("autarkyPercent"), metrics.autarkyPercent);
-  animateNumber(kpiElement("selfConsumptionPercent"), metrics.selfConsumptionPercent);
-  animateNumber(kpiElement("yearlyBenefitEur"), Math.round(metrics.yearlyBenefitEur));
+  setRollingNumber(kpiElement("autarkyPercent"), metrics.autarkyPercent);
+  setRollingNumber(kpiElement("selfConsumptionPercent"), metrics.selfConsumptionPercent);
+  setRollingNumber(kpiElement("yearlyBenefitEur"), Math.round(metrics.yearlyBenefitEur));
 
   const paybackElement = kpiElement("paybackYears");
   const paybackUnit = document.getElementById("payback-unit");
   const years = metrics.paybackYears;
   if (years === null) {
-    paybackElement.dataset.value = 0;
-    paybackElement.textContent = "–";
+    setRollingText(paybackElement, "–");
     paybackUnit.textContent = "";
   } else if (years > CONFIG.MAX_PAYBACK_YEARS_SHOWN) {
-    paybackElement.dataset.value = 0;
-    paybackElement.textContent = `> ${CONFIG.MAX_PAYBACK_YEARS_SHOWN}`;
+    setRollingText(paybackElement, `> ${CONFIG.MAX_PAYBACK_YEARS_SHOWN}`);
     paybackUnit.textContent = "Jahre";
   } else {
-    animateNumber(paybackElement, years, { decimals: 1 });
+    setRollingNumber(paybackElement, years, { decimals: 1 });
     paybackUnit.textContent = "Jahre";
   }
 }
@@ -420,7 +481,19 @@ function createStackedBar(container, title, partLabels) {
   };
 }
 
-function createDayChart(container) {
+function roundUpToNiceNumber(value) {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const niceStep = [1, 2, 2.5, 5, 10].find((step) => normalized <= step + 1e-9);
+  return niceStep * magnitude;
+}
+
+function renderYAxisLabels(yAxisElement, maxKwh) {
+  yAxisElement.querySelector('[data-y="top"]').textContent = axisFormat.format(maxKwh);
+  yAxisElement.querySelector('[data-y="mid"]').textContent = axisFormat.format(maxKwh / 2);
+}
+
+function createDayChart(container, yAxisElement) {
   const fillClasses = ["fill-1", "fill-2", "fill-3"];
   const columns = HOURS.map(() => {
     const column = document.createElement("div");
@@ -439,8 +512,9 @@ function createDayChart(container) {
   });
 
   return function updateDayChart({ day, solarKwh, loadKwh }) {
-    const maxKwh = Math.max(...solarKwh, ...loadKwh, 0.01) * 1.08;
+    const maxKwh = roundUpToNiceNumber(Math.max(...solarKwh, ...loadKwh, 0.01));
     const toPercent = (kwh) => `${(kwh / maxKwh) * 100}%`;
+    renderYAxisLabels(yAxisElement, maxKwh);
     columns.forEach((column, hour) => {
       column.segments[0].style.height = toPercent(day.direct[hour]);
       column.segments[1].style.height = toPercent(day.fromBattery[hour]);
@@ -503,13 +577,14 @@ function setupStaticTexts() {
   const legend = document.getElementById("day-legend");
   CONFIG.LABELS.dayParts.forEach((label, index) => legend.appendChild(createLegendItem(label, ["fill-1", "fill-2", "fill-3"][index])));
   legend.appendChild(createLegendItem(CONFIG.LABELS.dayProduction, "tick"));
+  document.getElementById("day-y-title").textContent = CONFIG.LABELS.dayYAxisTitle;
 }
 
 function init() {
   setupStaticTexts();
   updateConsumptionBar = createStackedBar(document.getElementById("bar-consumption"), CONFIG.LABELS.consumptionBar, CONFIG.LABELS.consumptionParts);
   updateSolarBar = createStackedBar(document.getElementById("bar-solar"), CONFIG.LABELS.solarBar, CONFIG.LABELS.solarParts);
-  updateDayChart = createDayChart(document.getElementById("day-chart"));
+  updateDayChart = createDayChart(document.getElementById("day-chart"), document.getElementById("day-y-axis"));
   setupSlider("input-pv", CONFIG.PV_KWP, "pvKwp");
   setupSlider("input-battery", CONFIG.BATTERY_KWH, "batteryKwh");
   setupSwitch("input-heat-pump", "heatPumpEnabled");
