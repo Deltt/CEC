@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tiger Prototyp</title>
 <style>
-/* ============ 1. DESIGN TOKENS (grey wireframe) ============ */
+/*  1. DESIGN TOKENS (grey wireframe)  */
 :root {
   --bg: #efefef; --surface: #fafafa; --line: #cfcfcf;
   --text: #2a2a2a; --muted: #777;
@@ -31,7 +31,7 @@
   color-scheme: dark;
 }
 
-/* ============ 2. BASE LAYOUT ============ */
+/*  2. BASE LAYOUT  */
 :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 html { scroll-padding-top: env(safe-area-inset-top, 0px); }
 *, *::before, *::after { box-sizing: inherit; }
@@ -46,7 +46,7 @@ h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
 .card.interactive { background: var(--interactive-bg); border-color: var(--interactive-border); }
 .columns { display: grid; gap: var(--gap); grid-template-columns: 1fr; }
 
-/* ============ 3. KPI ROW ============ */
+/*  3. KPI ROW  */
 .kpis { display: grid; gap: var(--gap); grid-template-columns: repeat(2, 1fr); }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
 .kpi-label { color: var(--muted); font-size: .8rem; }
@@ -57,7 +57,7 @@ h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
 .digit-column { display: block; }
 .digit-column > span { display: block; height: 1.15em; }
 
-/* ============ 4. CONTROLS ============ */
+/*  4. CONTROLS  */
 .control { display: grid; gap: 6px; margin-bottom: 16px; }
 .control-head { display: flex; justify-content: space-between; align-items: baseline; }
 .control-value { font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -72,7 +72,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
 .switch input:checked + .switch-track::after { transform: translateX(22px); }
 .switch input:focus-visible + .switch-track, input[type="range"]:focus-visible, .segment button:focus-visible { outline: 2px solid var(--fill-mid); outline-offset: 2px; }
 
-/* ============ 5. STACKED BARS (annual mix) ============ */
+/*  5. STACKED BARS (annual)  */
 .bar-block { margin-bottom: 18px; }
 .bar-block:last-child { margin-bottom: 0; }
 .bar-title { font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
@@ -86,7 +86,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
 .fill-2 { background: var(--fill-mid); }
 .fill-3 { background: var(--fill-soft); }
 
-/* ============ 6. DAY CHART ============ */
+/*  6. DAY CHART  */
 .chart-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .chart-head h2 { margin: 0; }
 .segment { display: inline-flex; border: 1px solid var(--interactive-border); border-radius: 8px; overflow: hidden; }
@@ -107,7 +107,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
 .hour-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .75rem; margin-top: 4px; }
 .fine-print { font-size: .78rem; color: var(--muted); }
 
-/* ============ 7. RESPONSIVE ============ */
+/*  7. RESPONSIVE  */
 @media (min-width: 600px) {
   .kpis { grid-template-columns: repeat(4, 1fr); }
   .columns { grid-template-columns: 1fr 1fr; }
@@ -181,7 +181,7 @@ input[type="range"] { width: 100%; height: 32px; accent-color: var(--interactive
 </main>
 
 <script>
-/* ============ A. CONFIG: values to adjust ============ */
+/*  A. CONFIG: values to adjust  */
 const CONFIG = {
   HOUSE_LABEL: "Beispielhaus (Platzhalterdaten)",
 
@@ -232,7 +232,7 @@ const CONFIG = {
   },
 };
 
-/* ============ B. STATE ============ */
+/*  B. STATE  */
 const state = {
   pvKwp: CONFIG.PV_KWP.start,
   batteryKwh: CONFIG.BATTERY_KWH.start,
@@ -241,7 +241,7 @@ const state = {
   season: "summer",
 };
 
-/* ============ C. HOURLY PROFILES (replace with PV*SOL CSV data later) ============ */
+/*  C. HOURLY PROFILES (replace with PV*SOL CSV data later)  */
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 function normalizeToSumOne(values) {
@@ -289,7 +289,7 @@ function buildHourlyProfiles(monthIndex) {
   return { solarKwh, loadKwh };
 }
 
-/* ============ D. SIMULATION ============ */
+/*  D. SIMULATION  */
 function simulateDay(solarKwh, loadKwh, startEnergyKwh) {
   const capacityKwh = state.batteryKwh;
   const maxPowerKwh = capacityKwh * CONFIG.BATTERY_MAX_POWER_KW_PER_KWH;
@@ -342,7 +342,7 @@ function simulateYear() {
   return { totals, typicalDays };
 }
 
-/* ============ E. METRICS ============ */
+/*  E. METRICS  */
 function calculateInvestmentEur() {
   let investment = state.pvKwp * CONFIG.COST_PV_EUR_PER_KWP + state.batteryKwh * CONFIG.COST_BATTERY_EUR_PER_KWH;
   if (state.heatPumpEnabled) investment += CONFIG.COST_HEAT_PUMP_EUR;
@@ -367,7 +367,7 @@ function calculateMetrics(totals) {
   };
 }
 
-/* ============ F. RENDERING ============ */
+/*  F. RENDERING  */
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const numberFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
@@ -529,7 +529,7 @@ function renderConfigLabels() {
   document.getElementById("output-battery").textContent = state.batteryKwh === 0 ? "kein Speicher" : `${numberFormat.format(state.batteryKwh)} kWh`;
 }
 
-/* ============ G. APP WIRING ============ */
+/*  G. APP WIRING  */
 let updateConsumptionBar, updateSolarBar, updateDayChart;
 
 function renderAll() {
