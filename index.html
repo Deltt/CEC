@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-design="hub">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -96,6 +96,23 @@ input[type="range"] { width:100%; height:32px; accent-color:var(--accent); }
 @media (min-width:600px) { .kpis { grid-template-columns:repeat(4,1fr); } }
 @media (min-width:900px) { .layout { grid-template-columns:1.25fr 1fr; } }
 @media (prefers-reduced-motion: reduce) { :root { --anim-ms:0ms; } .link-flow { animation:none; } }
+
+.node rect.node-box, .link-track, .link-flow { transition-property:stroke, stroke-width, opacity, rx; }
+html[data-design="pipeline"] { --radius:6px; }
+html[data-design="pipeline"] .kpis { order:3; }
+html[data-design="pipeline"] .fine-print { order:4; }
+html[data-design="pipeline"] .layout { grid-template-columns:1fr; }
+html[data-design="pipeline"] .node rect.node-box { rx:6px; }
+html[data-design="pipeline"] .link-flow { stroke-linecap:butt; stroke-dasharray:6 8; }
+html[data-design="pipeline"] .kpi-value { font-size:1.5rem; }
+html[data-design="radial"] { --radius:28px; }
+html[data-design="radial"] .kpi { background:transparent; border:0; border-left:2px solid var(--line); border-radius:0; padding:2px 10px; }
+html[data-design="radial"] .kpi-value { font-size:2.4rem; font-weight:500; }
+html[data-design="radial"] .card { border:0; background:var(--panel); }
+html[data-design="radial"] .card.interactive { background:var(--surface); border:1px solid var(--line); }
+html[data-design="radial"] .node rect.node-box { rx:32px; }
+@media (min-width:760px) { html[data-design="pipeline"] .side { grid-template-columns:1fr 1fr; } }
+@media (min-width:900px) { html[data-design="radial"] .layout { grid-template-columns:1fr 1.25fr; } html[data-design="radial"] .side { order:-1; } }
 </style>
 </head>
 <body>
@@ -106,6 +123,7 @@ input[type="range"] { width:100%; height:32px; accent-color:var(--accent); }
       <p class="muted">So fühlt sich Ihre Solaranlage im Alltag an</p>
     </div>
     <div class="header-actions">
+      <div class="segment" id="design-switch" aria-label="Design"><button type="button" data-design="hub" aria-pressed="true">Hub</button><button type="button" data-design="pipeline" aria-pressed="false">Pipeline</button><button type="button" data-design="radial" aria-pressed="false">Radial</button></div>
       <span class="chip" id="data-source"></span>
       <button type="button" class="button" id="reset-import" hidden>Platzhalterdaten</button>
       <label class="button primary">PV*SOL-CSV laden<input type="file" id="input-file" accept=".csv,.txt" hidden></label>
@@ -178,7 +196,7 @@ const FLOW_LINKS = [
   { id: "houseToHeatPump", path: "M180,262 C180,335 105,325 105,368", kind: "heat", readKw: (d, hour) => d.heatPumpKwh[hour] },
   { id: "houseToWallbox", path: "M240,262 C240,335 315,325 315,368", kind: "ev", readKw: (d, hour) => d.evKwh[hour] },
 ];
-const flowElements = { nodes: {}, links: {} };
+const flowElements = { nodes: {}, links: {}, tracks: {} };
 
 function createSvgElement(tagName, attributes = {}, parent = null) {
   const element = document.createElementNS(SVG_NAMESPACE, tagName);
@@ -187,14 +205,50 @@ function createSvgElement(tagName, attributes = {}, parent = null) {
   return element;
 }
 
+const FLOW_LAYOUTS = {
+  hub: {
+    viewBox: "0 0 420 450",
+    nodes: { solar: { x: 210, y: 50 }, house: { x: 210, y: 230 }, battery: { x: 62, y: 230 }, grid: { x: 358, y: 230 }, heatPump: { x: 105, y: 400 }, wallbox: { x: 315, y: 400 } },
+    paths: {
+      solarToHouse: "M210,82 L210,198", solarToBattery: "M154,50 C62,50 62,120 62,198", solarToGrid: "M266,50 C358,50 358,120 358,198",
+      batteryToHouse: "M118,230 L154,230", gridToHouse: "M302,230 L266,230",
+      houseToHeatPump: "M180,262 C180,335 105,325 105,368", houseToWallbox: "M240,262 C240,335 315,325 315,368",
+    },
+  },
+  pipeline: {
+    viewBox: "0 0 660 320",
+    nodes: { solar: { x: 100, y: 50 }, battery: { x: 100, y: 160 }, grid: { x: 100, y: 270 }, house: { x: 350, y: 160 }, heatPump: { x: 580, y: 70 }, wallbox: { x: 580, y: 250 } },
+    paths: {
+      solarToHouse: "M156,50 C250,50 250,140 294,148", solarToBattery: "M100,82 L100,128", solarToGrid: "M44,60 C-10,85 -10,245 44,260",
+      batteryToHouse: "M156,160 L294,160", gridToHouse: "M156,270 C250,270 250,180 294,172",
+      houseToHeatPump: "M406,150 C480,150 500,70 524,70", houseToWallbox: "M406,170 C480,170 500,250 524,250",
+    },
+  },
+  radial: {
+    viewBox: "0 0 460 440",
+    nodes: { solar: { x: 230, y: 65 }, house: { x: 230, y: 235 }, battery: { x: 68, y: 182 }, grid: { x: 392, y: 182 }, heatPump: { x: 130, y: 372 }, wallbox: { x: 330, y: 372 } },
+    paths: {
+      solarToHouse: "M230,65 L230,235", solarToBattery: "M230,65 L68,182", solarToGrid: "M230,65 L392,182",
+      batteryToHouse: "M68,182 L230,235", gridToHouse: "M392,182 L230,235",
+      houseToHeatPump: "M230,235 L130,372", houseToWallbox: "M230,235 L330,372",
+    },
+  },
+};
+
 function buildFlowDiagram() {
   const svg = document.getElementById("flow-diagram");
+  const layout = FLOW_LAYOUTS[state.design];
+  svg.replaceChildren();
+  svg.setAttribute("viewBox", layout.viewBox);
+  Object.assign(flowElements, { nodes: {}, links: {}, tracks: {} });
+  const positionedLinks = FLOW_LINKS.map((link) => ({ ...link, path: layout.paths[link.id] }));
+  const positionedNodes = FLOW_NODES.map((node) => ({ ...node, ...layout.nodes[node.id] }));
 
-  FLOW_LINKS.forEach((link) => {
-    createSvgElement("path", { d: link.path, class: "link-track" }, svg);
+  positionedLinks.forEach((link) => {
+    flowElements.tracks[link.id] = createSvgElement("path", { d: link.path, class: "link-track" }, svg);
     flowElements.links[link.id] = createSvgElement("path", { d: link.path, class: `link-flow kind-${link.kind}`, opacity: 0 }, svg);
   });
-  FLOW_NODES.forEach((node) => {
+  positionedNodes.forEach((node) => {
     const group = createSvgElement("g", { class: "node" }, svg);
     createSvgElement("rect", { class: "node-box", x: node.x - 56, y: node.y - 32, width: 112, height: 64, rx: 14 }, group);
     createSvgElement("text", { class: "node-label", x: node.x, y: node.y - 10 }, group).textContent = node.label;
@@ -254,6 +308,8 @@ function renderFlowDiagram() {
   nodes.heatPump.group.classList.toggle("off", !state.heatPumpEnabled);
   nodes.wallbox.group.classList.toggle("off", !state.evEnabled);
 
+  const trackVisibility = { solarToBattery: state.batteryKwh > 0, batteryToHouse: state.batteryKwh > 0, houseToHeatPump: state.heatPumpEnabled, houseToWallbox: state.evEnabled };
+  Object.entries(trackVisibility).forEach(([linkId, isVisible]) => { flowElements.tracks[linkId].style.opacity = isVisible ? 1 : 0; });
   document.getElementById("output-hour").textContent = `${String(hour).padStart(2, "0")}:00 Uhr`;
   document.getElementById("input-hour").value = hour;
   dayChartColumns.forEach((column, columnHour) => column.element.classList.toggle("now", columnHour === hour));
@@ -342,7 +398,7 @@ const CONFIG = {
 
 const state = {
   pvKwp: CONFIG.PV_KWP.start, batteryKwh: CONFIG.BATTERY_KWH.start, householdKwhPerYear: CONFIG.HOUSEHOLD_KWH.start,
-  heatPumpEnabled: false, evEnabled: false, season: "summer", hour: 12, isPlaying: false, importedData: null,
+  heatPumpEnabled: false, evEnabled: false, season: "summer", hour: 12, design: "hub", isPlaying: false, importedData: null,
 };
 let currentSimulation = null;
 let playTimerId = null;
@@ -594,6 +650,14 @@ function init() {
     state.season = button.dataset.season;
     seasonButtons.forEach((other) => other.setAttribute("aria-pressed", String(other === button)));
     renderAll();
+  }));
+  const designButtons = document.querySelectorAll("#design-switch button");
+  designButtons.forEach((button) => button.addEventListener("click", () => {
+    state.design = button.dataset.design;
+    document.documentElement.dataset.design = state.design;
+    designButtons.forEach((other) => other.setAttribute("aria-pressed", String(other === button)));
+    buildFlowDiagram();
+    renderFlowDiagram();
   }));
   document.getElementById("assumptions").textContent =
     `Annahmen: Strompreis ${numberFormat.format(CONFIG.ELECTRICITY_PRICE_EUR_PER_KWH * 100)} ct/kWh, Einspeisevergütung ${numberFormat.format(CONFIG.FEED_IN_TARIFF_EUR_PER_KWH * 100)} ct/kWh. Ohne CSV-Import sind die Tagesprofile synthetisch; alle Werte dienen der Veranschaulichung.`;
