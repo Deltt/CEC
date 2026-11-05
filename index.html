@@ -86,7 +86,7 @@ input[type="range"] { width:100%; height:32px; accent-color:var(--accent); }
 .kind-heat { stroke:var(--heat); } .kind-ev { stroke:var(--ev); } .kind-house { stroke:var(--accent); }
 .node rect.node-box { fill:var(--surface); stroke:var(--line); stroke-width:1.5; transition:stroke var(--anim-ms); }
 .node.active rect.node-box { stroke-width:2; }
-.node { transition:opacity var(--anim-ms); } .node.off { opacity:0; pointer-events:none; }
+.node { transition:opacity var(--anim-ms), transform var(--anim-ms) ease; } .node.off { opacity:0; pointer-events:none; }
 .node-label { fill:var(--muted); font-size:11px; text-anchor:middle; }
 .node-value { fill:var(--text); font-size:17px; font-weight:650; text-anchor:middle; font-variant-numeric:tabular-nums; }
 .battery-track { fill:var(--line); } .battery-fill { fill:var(--battery); transition:width var(--anim-ms); }
@@ -133,6 +133,10 @@ html[data-design="scene"] .node-value { font-size:18px; }
 .digit-slot { display:inline-block; overflow:hidden; height:1.15em; line-height:1.15; vertical-align:top; }
 .digit-column { display:block; }
 .digit-column > span { display:block; height:1.15em; }
+.scene-arc { fill:none; stroke:var(--line); stroke-width:2; stroke-dasharray:3 8; stroke-linecap:round; }
+.scene-ground { stroke:var(--line); stroke-width:2; }
+html[data-design="arc"] { --radius:20px; }
+html[data-design="arc"] .node-value { font-size:18px; }
 </style>
 </head>
 <body>
@@ -143,7 +147,7 @@ html[data-design="scene"] .node-value { font-size:18px; }
       <p class="muted">So fühlt sich Ihre Solaranlage im Alltag an</p>
     </div>
     <div class="header-actions">
-      <div class="segment" id="design-switch" aria-label="Design"><button type="button" data-design="hub" aria-pressed="true">Hub</button><button type="button" data-design="pipeline" aria-pressed="false">Pipeline</button><button type="button" data-design="radial" aria-pressed="false">Radial</button><button type="button" data-design="scene" aria-pressed="false">Szene</button></div>
+      <div class="segment" id="design-switch" aria-label="Design"><button type="button" data-design="hub" aria-pressed="true">Hub</button><button type="button" data-design="pipeline" aria-pressed="false">Pipeline</button><button type="button" data-design="radial" aria-pressed="false">Radial</button><button type="button" data-design="scene" aria-pressed="false">Szene</button><button type="button" data-design="arc" aria-pressed="false">Sonnenbahn</button></div>
       <span class="chip" id="data-source"></span>
       <button type="button" class="button" id="reset-import" hidden>Platzhalterdaten</button>
       <label class="button primary">PV*SOL-CSV laden<input type="file" id="input-file" accept=".csv,.txt" hidden></label>
@@ -268,18 +272,47 @@ const SCENE_ICON_DRAWERS = {
   },
 };
 
-function buildSceneNode(group, node) {
+function buildSceneNode(group, node, layout) {
   const element = { group };
   group.classList.add(`tone-${node.kind}`);
-  SCENE_ICON_DRAWERS[node.id](group, element);
-  group.setAttribute("transform", `translate(${node.x},${node.y})`);
-  element.valueText = createSvgElement("text", { class: "node-value", x: 0, y: 70 }, group);
-  element.labelText = createSvgElement("text", { class: "node-label", x: 0, y: 86 }, group);
+  (layout.drawerOverrides?.[node.id] ?? SCENE_ICON_DRAWERS[node.id])(group, element);
+  if (layout.sunArc && node.id === "solar") group.style.transform = `translate(${node.x}px, ${node.y}px)`;
+  else group.setAttribute("transform", `translate(${node.x},${node.y})`);
+  const [valueOffsetY, labelOffsetY] = layout.textOffsets?.[node.id] ?? [70, 86];
+  element.valueText = createSvgElement("text", { class: "node-value", x: 0, y: valueOffsetY }, group);
+  element.labelText = createSvgElement("text", { class: "node-label", x: 0, y: labelOffsetY }, group);
   element.labelText.textContent = node.label;
   return element;
 }
 
 const FLOW_LAYOUTS = {
+  arc: {
+    isScene: true,
+    viewBox: "0 0 460 540",
+    sunArc: { centerX: 230, centerY: 288, radius: 200 },
+    sunTargets: { solarToHouse: [230, 234], solarToBattery: [80, 246], solarToGrid: [390, 240] },
+    textOffsets: { solar: [46, 62] },
+    drawerOverrides: {
+      solar: (group, element) => {
+        element.sunGroup = createSvgElement("g", { class: "scene-sun" }, group);
+        createSvgElement("circle", { class: "ico", cx: 0, cy: 0, r: 13 }, element.sunGroup);
+        for (let rayIndex = 0; rayIndex < 8; rayIndex += 1) {
+          const angle = (rayIndex * Math.PI) / 4;
+          createSvgElement("line", { class: "ico", x1: Math.cos(angle) * 20, y1: Math.sin(angle) * 20, x2: Math.cos(angle) * 28, y2: Math.sin(angle) * 28 }, element.sunGroup);
+        }
+      },
+    },
+    backdrop: (svg) => {
+      createSvgElement("path", { class: "scene-arc", d: "M30,288 A200,200 0 0 1 430,288" }, svg);
+      createSvgElement("line", { class: "scene-ground", x1: 10, y1: 340, x2: 450, y2: 340 }, svg);
+    },
+    nodes: { solar: { x: 230, y: 88 }, house: { x: 230, y: 288 }, battery: { x: 80, y: 288 }, grid: { x: 390, y: 288 }, heatPump: { x: 120, y: 440 }, wallbox: { x: 340, y: 440 } },
+    paths: {
+      solarToHouse: "M230,120 L230,234", solarToBattery: "M210,116 L80,246", solarToGrid: "M250,116 L390,240",
+      batteryToHouse: "M104,288 L164,288", gridToHouse: "M358,288 L296,288",
+      houseToHeatPump: "M196,350 C196,395 120,380 120,412", houseToWallbox: "M264,350 C264,395 330,380 330,424",
+    },
+  },
   scene: {
     isScene: true,
     viewBox: "0 0 460 500",
@@ -325,6 +358,7 @@ function buildFlowDiagram() {
   svg.replaceChildren();
   svg.setAttribute("viewBox", layout.viewBox);
   Object.assign(flowElements, { nodes: {}, links: {}, tracks: {} });
+  if (layout.backdrop) layout.backdrop(svg);
   const positionedLinks = FLOW_LINKS.map((link) => ({ ...link, path: layout.paths[link.id] }));
   const positionedNodes = FLOW_NODES.map((node) => ({ ...node, ...layout.nodes[node.id] }));
 
@@ -334,7 +368,7 @@ function buildFlowDiagram() {
   });
   positionedNodes.forEach((node) => {
     const group = createSvgElement("g", { class: "node" }, svg);
-    if (layout.isScene) { flowElements.nodes[node.id] = buildSceneNode(group, node); return; }
+    if (layout.isScene) { flowElements.nodes[node.id] = buildSceneNode(group, node, layout); return; }
     createSvgElement("rect", { class: "node-box", x: node.x - 56, y: node.y - 32, width: 112, height: 64, rx: 14 }, group);
     createSvgElement("text", { class: "node-label", x: node.x, y: node.y - 10 }, group).textContent = node.label;
     const valueText = createSvgElement("text", { class: "node-value", x: node.x, y: node.y + 14 }, group);
@@ -408,6 +442,26 @@ function renderFlowDiagram() {
   }
   const trackVisibility = { solarToBattery: state.batteryKwh > 0, batteryToHouse: state.batteryKwh > 0, houseToHeatPump: state.heatPumpEnabled, houseToWallbox: state.evEnabled };
   Object.entries(trackVisibility).forEach(([linkId, isVisible]) => { flowElements.tracks[linkId].style.opacity = isVisible ? 1 : 0; });
+  const arcLayout = FLOW_LAYOUTS[state.design];
+  if (arcLayout.sunArc) {
+    const [sunriseHour, sunsetHour] = CONFIG.SUN_HOURS[state.season];
+    const dayProgress = (hour + 0.5 - sunriseHour) / (sunsetHour - sunriseHour);
+    const isDaytime = dayProgress >= 0 && dayProgress <= 1;
+    const sunAngle = Math.PI * (1 - Math.min(1, Math.max(0, dayProgress)));
+    const sunX = arcLayout.sunArc.centerX + arcLayout.sunArc.radius * Math.cos(sunAngle);
+    const sunY = arcLayout.sunArc.centerY - arcLayout.sunArc.radius * Math.sin(sunAngle);
+    nodes.solar.group.style.transform = `translate(${sunX}px, ${sunY}px)`;
+    nodes.solar.group.classList.toggle("off", !isDaytime);
+    Object.entries(arcLayout.sunTargets).forEach(([linkId, [targetX, targetY]]) => {
+      const distance = Math.hypot(targetX - sunX, targetY - sunY);
+      const startX = sunX + ((targetX - sunX) / distance) * 32;
+      const startY = sunY + ((targetY - sunY) / distance) * 32;
+      const pathData = `M${startX},${startY} L${targetX},${targetY}`;
+      flowElements.tracks[linkId].setAttribute("d", pathData);
+      flowElements.links[linkId].setAttribute("d", pathData);
+      flowElements.tracks[linkId].style.opacity = isDaytime && (linkId !== "solarToBattery" || state.batteryKwh > 0) ? 1 : 0;
+    });
+  }
   document.getElementById("output-hour").textContent = `${String(hour).padStart(2, "0")}:00 Uhr`;
   document.getElementById("input-hour").value = hour;
   dayChartColumns.forEach((column, columnHour) => column.element.classList.toggle("now", columnHour === hour));
@@ -489,6 +543,7 @@ const CONFIG = {
   PV_KWH_PER_KWP_BY_MONTH: [25, 50, 90, 125, 145, 150, 150, 130, 95, 60, 30, 20],
   HEAT_PUMP_SHARE_BY_MONTH: [0.19, 0.16, 0.13, 0.08, 0.04, 0.02, 0.01, 0.01, 0.03, 0.08, 0.12, 0.13],
   SEASON_MONTH_INDEX: { summer: 6, winter: 0 },
+  SUN_HOURS: { summer: [5, 21.5], winter: [8, 16.5] },
   BATTERY_ROUNDTRIP_EFFICIENCY: 0.92,
   BATTERY_MAX_POWER_KW: 5,
   WALLBOX_MAX_POWER_KW: 11,
