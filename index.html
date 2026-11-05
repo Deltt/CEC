@@ -428,26 +428,36 @@ function calculateMetrics(totals) {
   };
 }
 
-function simulateDay(solarKwh, loadKwh, startEnergyKwh) {
+function simulateDay(solarKwh, loadKwh, evNeedKwh, startEnergyKwh) {
   const capacityKwh = state.batteryKwh;
-  const maxPowerKwh = capacityKwh * CONFIG.BATTERY_MAX_POWER_KW_PER_KWH;
+  const maxPowerKwh = CONFIG.BATTERY_MAX_POWER_KW;
   const reserveKwh = capacityKwh * CONFIG.BATTERY_RESERVE_SHARE;
   const oneWayEfficiency = Math.sqrt(CONFIG.BATTERY_ROUNDTRIP_EFFICIENCY);
-  const day = { direct: [], fromBattery: [], fromGrid: [], toBattery: [], feedIn: [], batteryFillShare: [] };
+  const day = { direct: [], fromBattery: [], fromGrid: [], toBattery: [], feedIn: [], batteryFillShare: [], evKwh: [] };
   let energyKwh = startEnergyKwh;
+  let evRemainingKwh = evNeedKwh;
 
   HOURS.forEach((hour) => {
-    const direct = Math.min(solarKwh[hour], loadKwh[hour]);
-    const surplus = solarKwh[hour] - direct;
-    const deficit = loadKwh[hour] - direct;
+    const directToHouse = Math.min(solarKwh[hour], loadKwh[hour]);
+    const surplus = solarKwh[hour] - directToHouse;
+    const deficit = loadKwh[hour] - directToHouse;
     const charged = Math.min(surplus, maxPowerKwh, (capacityKwh - energyKwh) / oneWayEfficiency);
     energyKwh += charged * oneWayEfficiency;
     const available = Math.max(0, energyKwh - reserveKwh) * oneWayEfficiency;
     const delivered = Math.min(deficit, maxPowerKwh, available);
     energyKwh -= delivered / oneWayEfficiency;
 
-    day.direct.push(direct); day.toBattery.push(charged); day.feedIn.push(surplus - charged);
-    day.fromBattery.push(delivered); day.fromGrid.push(deficit - delivered);
+    const surplusAfterBattery = surplus - charged;
+    const evFromSolar = Math.min(surplusAfterBattery, CONFIG.WALLBOX_MAX_POWER_KW, evRemainingKwh);
+    evRemainingKwh -= evFromSolar;
+    const isGridChargeHour = hour >= CONFIG.EV_GRID_CHARGE_FROM_HOUR && hour <= CONFIG.EV_GRID_CHARGE_TO_HOUR;
+    const gridChargeHoursLeft = CONFIG.EV_GRID_CHARGE_TO_HOUR - hour + 1;
+    const evFromGrid = isGridChargeHour ? Math.min(CONFIG.WALLBOX_MAX_POWER_KW, evRemainingKwh / gridChargeHoursLeft) : 0;
+    evRemainingKwh -= evFromGrid;
+
+    day.direct.push(directToHouse + evFromSolar); day.toBattery.push(charged); day.feedIn.push(surplusAfterBattery - evFromSolar);
+    day.fromBattery.push(delivered); day.fromGrid.push(deficit - delivered + evFromGrid);
+    day.evKwh.push(evFromSolar + evFromGrid);
     day.batteryFillShare.push(capacityKwh > 0 ? energyKwh / capacityKwh : 0);
   });
   return { day, endEnergyKwh: energyKwh };
@@ -458,12 +468,13 @@ function simulateYear() {
   const typicalDays = {};
   CONFIG.DAYS_PER_MONTH.forEach((days, monthIndex) => {
     const profiles = buildHourlyProfiles(monthIndex);
-    const warmUp = simulateDay(profiles.solarKwh, profiles.loadKwh, state.batteryKwh * 0.5);
-    const { day } = simulateDay(profiles.solarKwh, profiles.loadKwh, warmUp.endEnergyKwh);
-    totals.consumption += sumList(profiles.loadKwh) * days;
+    const warmUp = simulateDay(profiles.solarKwh, profiles.loadKwh, profiles.evNeedKwh, state.batteryKwh * 0.5);
+    const { day } = simulateDay(profiles.solarKwh, profiles.loadKwh, profiles.evNeedKwh, warmUp.endEnergyKwh);
+    const totalLoadKwh = HOURS.map((hour) => profiles.loadKwh[hour] + day.evKwh[hour]);
+    totals.consumption += sumList(totalLoadKwh) * days;
     totals.production += sumList(profiles.solarKwh) * days;
     ["direct", "fromBattery", "fromGrid", "toBattery", "feedIn"].forEach((key) => { totals[key] += sumList(day[key]) * days; });
-    typicalDays[monthIndex] = { day, ...profiles };
+    typicalDays[monthIndex] = { day, ...profiles, evKwh: day.evKwh, loadKwh: totalLoadKwh };
   });
   return { totals, typicalDays };
 }
@@ -479,7 +490,10 @@ const CONFIG = {
   HEAT_PUMP_SHARE_BY_MONTH: [0.19, 0.16, 0.13, 0.08, 0.04, 0.02, 0.01, 0.01, 0.03, 0.08, 0.12, 0.13],
   SEASON_MONTH_INDEX: { summer: 6, winter: 0 },
   BATTERY_ROUNDTRIP_EFFICIENCY: 0.92,
-  BATTERY_MAX_POWER_KW_PER_KWH: 0.5,
+  BATTERY_MAX_POWER_KW: 5,
+  WALLBOX_MAX_POWER_KW: 11,
+  EV_GRID_CHARGE_FROM_HOUR: 18,
+  EV_GRID_CHARGE_TO_HOUR: 22,
   BATTERY_RESERVE_SHARE: 0.1,
   ELECTRICITY_PRICE_EUR_PER_KWH: 0.35,
   FEED_IN_TARIFF_EUR_PER_KWH: 0.08,
@@ -612,7 +626,6 @@ const gaussian = (hour, centerHour, width) => Math.exp(-((hour + 0.5 - centerHou
 const buildSolarShape = (monthIndex) => normalizeToSumOne(HOURS.map((hour) => gaussian(hour, 13, 2.4 + 1.2 * (1 - Math.abs(monthIndex - 5.5) / 5.5))));
 const buildHouseholdShape = () => normalizeToSumOne(HOURS.map((hour) => 0.3 + 1.2 * gaussian(hour, 7.5, 1.2) + 1.6 * gaussian(hour, 19, 2)));
 const buildHeatPumpShape = () => normalizeToSumOne(HOURS.map((hour) => 1 + 0.3 * gaussian(hour, 6, 2) + 0.3 * gaussian(hour, 19, 2)));
-const buildEvShape = () => normalizeToSumOne(HOURS.map((hour) => (hour >= 18 && hour <= 22 ? 1 : 0)));
 
 function buildHourlyProfiles(monthIndex) {
   const days = CONFIG.DAYS_PER_MONTH[monthIndex];
@@ -629,10 +642,9 @@ function buildHourlyProfiles(monthIndex) {
   const heatPumpShape = buildHeatPumpShape();
   const heatPumpKwhPerDay = (CONFIG.HEAT_PUMP_KWH_PER_YEAR * CONFIG.HEAT_PUMP_SHARE_BY_MONTH[monthIndex]) / days;
   const heatPumpKwh = HOURS.map((hour) => (state.heatPumpEnabled ? heatPumpKwhPerDay * heatPumpShape[hour] : 0));
-  const evShape = buildEvShape();
-  const evKwh = HOURS.map((hour) => (state.evEnabled ? (CONFIG.EV_KWH_PER_YEAR / 365) * evShape[hour] : 0));
-  const loadKwh = HOURS.map((hour) => householdKwh[hour] + heatPumpKwh[hour] + evKwh[hour]);
-  return { solarKwh, householdKwh, heatPumpKwh, evKwh, loadKwh };
+  const evNeedKwh = state.evEnabled ? CONFIG.EV_KWH_PER_YEAR / 365 : 0;
+  const loadKwh = HOURS.map((hour) => householdKwh[hour] + heatPumpKwh[hour]);
+  return { solarKwh, householdKwh, heatPumpKwh, evNeedKwh, loadKwh };
 }
 
 function isDigit(character) {
@@ -798,7 +810,7 @@ function init() {
     renderFlowDiagram();
   }));
   document.getElementById("assumptions").textContent =
-    `Annahmen: Strompreis ${numberFormat.format(CONFIG.ELECTRICITY_PRICE_EUR_PER_KWH * 100)} ct/kWh, Einspeisevergütung ${numberFormat.format(CONFIG.FEED_IN_TARIFF_EUR_PER_KWH * 100)} ct/kWh. Ohne CSV-Import sind die Tagesprofile synthetisch; alle Werte dienen der Veranschaulichung.`;
+    `Annahmen: Strompreis ${numberFormat.format(CONFIG.ELECTRICITY_PRICE_EUR_PER_KWH * 100)} ct/kWh, Einspeisevergütung ${numberFormat.format(CONFIG.FEED_IN_TARIFF_EUR_PER_KWH * 100)} ct/kWh. Ohne CSV-Import sind die Tagesprofile synthetisch; alle Werte dienen der Veranschaulichung. Speicher max. ${CONFIG.BATTERY_MAX_POWER_KW} kW; die Wallbox lädt zuerst aus Solarüberschuss (max. ${CONFIG.WALLBOX_MAX_POWER_KW} kW), der Rest abends aus dem Netz; das Auto ist als stets angeschlossen angenommen.`;
   applyImportedData(null, CONFIG.PLACEHOLDER_SOURCE_LABEL);
 }
 
