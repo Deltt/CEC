@@ -7,19 +7,19 @@
 <style>
 :root {
   --bg:#f5f6f7; --surface:#fff; --line:#dde2e8; --text:#1b222b; --muted:#68737f;
-  --solar:#2f3a45; --battery:#6f7c89; --grid:#a9b2bc; --heat:#55616d; --ev:#8895a2;
+  --solar:#c99a2e; --battery:#4f9a79; --grid:#5f7fbf; --heat:#c97b5a; --ev:#4aa0ab;
   --panel:#eceef1; --accent:#3d5a78; --radius:16px; --anim-ms:450ms; color-scheme:light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg:#12151a; --surface:#1b2027; --line:#2c333c; --text:#e8ecf1; --muted:#93a0ad;
-    --solar:#e4e9ee; --battery:#9ca8b4; --grid:#616d79; --heat:#c3cbd3; --ev:#808c98;
+    --solar:#d8b25a; --battery:#6fb596; --grid:#8aa3d6; --heat:#d99c82; --ev:#72b9c2;
     --panel:#21262c; --accent:#a3b9cf; color-scheme:dark;
   }
 }
 :root[data-theme="dark"] {
   --bg:#12151a; --surface:#1b2027; --line:#2c333c; --text:#e8ecf1; --muted:#93a0ad;
-  --solar:#e4e9ee; --battery:#9ca8b4; --grid:#616d79; --heat:#c3cbd3; --ev:#808c98;
+  --solar:#d8b25a; --battery:#6fb596; --grid:#8aa3d6; --heat:#d99c82; --ev:#72b9c2;
   --panel:#21262c; --accent:#a3b9cf; color-scheme:dark;
 }
 :root { box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
@@ -113,6 +113,26 @@ html[data-design="radial"] .card.interactive { background:var(--surface); border
 html[data-design="radial"] .node rect.node-box { rx:32px; }
 @media (min-width:760px) { html[data-design="pipeline"] .side { grid-template-columns:1fr 1fr; } }
 @media (min-width:900px) { html[data-design="radial"] .layout { grid-template-columns:1fr 1.25fr; } html[data-design="radial"] .side { order:-1; } }
+
+.ico { fill:none; stroke:var(--muted); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; transition:stroke var(--anim-ms); }
+.ico-panel { fill:var(--accent); fill-opacity:.3; }
+.node.active .ico { stroke:var(--tone, var(--text)); }
+.tone-solar { --tone:var(--solar); } .tone-battery { --tone:var(--battery); } .tone-grid { --tone:var(--grid); }
+.tone-heat { --tone:var(--heat); } .tone-ev { --tone:var(--ev); } .tone-house { --tone:var(--accent); }
+.ico-window { fill:var(--solar); opacity:.15; transition:opacity var(--anim-ms); }
+.scene-fill { fill:var(--battery); transition:height var(--anim-ms), y var(--anim-ms); }
+.scene-sun { transform-box:fill-box; transform-origin:center; transition:transform var(--anim-ms), opacity var(--anim-ms); }
+.scene-fan { transform-box:fill-box; transform-origin:center; animation:spin 1s linear infinite; animation-play-state:paused; }
+.node.active .scene-fan { animation-play-state:running; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.scene-bolt { fill:var(--ev); opacity:0; transition:opacity var(--anim-ms); }
+.node.active .scene-bolt { opacity:1; }
+html[data-design="scene"] { --radius:20px; }
+html[data-design="scene"] .node-value { font-size:18px; }
+@media (prefers-reduced-motion: reduce) { .scene-fan { animation:none; } }
+.digit-slot { display:inline-block; overflow:hidden; height:1.15em; line-height:1.15; vertical-align:top; }
+.digit-column { display:block; }
+.digit-column > span { display:block; height:1.15em; }
 </style>
 </head>
 <body>
@@ -123,7 +143,7 @@ html[data-design="radial"] .node rect.node-box { rx:32px; }
       <p class="muted">So fühlt sich Ihre Solaranlage im Alltag an</p>
     </div>
     <div class="header-actions">
-      <div class="segment" id="design-switch" aria-label="Design"><button type="button" data-design="hub" aria-pressed="true">Hub</button><button type="button" data-design="pipeline" aria-pressed="false">Pipeline</button><button type="button" data-design="radial" aria-pressed="false">Radial</button></div>
+      <div class="segment" id="design-switch" aria-label="Design"><button type="button" data-design="hub" aria-pressed="true">Hub</button><button type="button" data-design="pipeline" aria-pressed="false">Pipeline</button><button type="button" data-design="radial" aria-pressed="false">Radial</button><button type="button" data-design="scene" aria-pressed="false">Szene</button></div>
       <span class="chip" id="data-source"></span>
       <button type="button" class="button" id="reset-import" hidden>Platzhalterdaten</button>
       <label class="button primary">PV*SOL-CSV laden<input type="file" id="input-file" accept=".csv,.txt" hidden></label>
@@ -205,7 +225,71 @@ function createSvgElement(tagName, attributes = {}, parent = null) {
   return element;
 }
 
+const SCENE_ICON_DRAWERS = {
+  solar: (group, element) => {
+    element.sunGroup = createSvgElement("g", { class: "scene-sun" }, group);
+    createSvgElement("circle", { class: "ico", cx: 0, cy: -10, r: 13 }, element.sunGroup);
+    for (let rayIndex = 0; rayIndex < 8; rayIndex += 1) {
+      const angle = (rayIndex * Math.PI) / 4;
+      createSvgElement("line", { class: "ico", x1: Math.cos(angle) * 20, y1: -10 + Math.sin(angle) * 20, x2: Math.cos(angle) * 28, y2: -10 + Math.sin(angle) * 28 }, element.sunGroup);
+    }
+    createSvgElement("path", { class: "ico ico-panel", d: "M-30,22 H30 L22,40 H-38 Z" }, group);
+    createSvgElement("path", { class: "ico", d: "M-9,22 L-17,40 M12,22 L4,40" }, group);
+  },
+  house: (group, element) => {
+    createSvgElement("path", { class: "ico", d: "M-64,-6 L0,-58 L64,-6 Z" }, group);
+    createSvgElement("path", { class: "ico", d: "M-50,-6 V52 H50 V-6" }, group);
+    createSvgElement("path", { class: "ico ico-panel", d: "M14,-46 L44,-22 L38,-14 L8,-38 Z" }, group);
+    element.windows = [-32, 20].map((offsetX) => createSvgElement("rect", { class: "ico-window", x: offsetX, y: 4, width: 14, height: 14, rx: 2 }, group));
+    createSvgElement("rect", { class: "ico", x: -8, y: 24, width: 16, height: 28, rx: 2 }, group);
+  },
+  battery: (group, element) => {
+    createSvgElement("rect", { class: "ico", x: -22, y: -30, width: 44, height: 68, rx: 6 }, group);
+    createSvgElement("rect", { class: "ico", x: -8, y: -38, width: 16, height: 8, rx: 2 }, group);
+    element.fillBar = createSvgElement("rect", { class: "scene-fill", x: -17, y: 33, width: 34, height: 0, rx: 3 }, group);
+  },
+  grid: (group) => {
+    createSvgElement("path", { class: "ico", d: "M0,-44 L-18,44 M0,-44 L18,44 M-26,-24 H26 M-20,-6 H20 M-14,14 H14 M-11,-6 L14,14 M11,-6 L-14,14" }, group);
+  },
+  heatPump: (group, element) => {
+    createSvgElement("rect", { class: "ico", x: -36, y: -26, width: 72, height: 54, rx: 6 }, group);
+    createSvgElement("circle", { class: "ico", cx: 0, cy: 1, r: 19 }, group);
+    element.fan = createSvgElement("g", { class: "scene-fan" }, group);
+    createSvgElement("circle", { cx: 0, cy: 1, r: 14, fill: "none" }, element.fan);
+    [0, 120, 240].forEach((angleDegrees) => {
+      const radians = (angleDegrees * Math.PI) / 180;
+      createSvgElement("line", { class: "ico", x1: 0, y1: 1, x2: Math.cos(radians) * 14, y2: 1 + Math.sin(radians) * 14 }, element.fan);
+    });
+  },
+  wallbox: (group, element) => {
+    createSvgElement("path", { class: "ico", d: "M-48,24 V8 Q-48,2 -42,0 L-30,-16 H18 L32,0 H44 Q50,2 50,8 V24 Z" }, group);
+    [-26, 28].forEach((wheelX) => createSvgElement("circle", { class: "ico", cx: wheelX, cy: 26, r: 8 }, group));
+    element.bolt = createSvgElement("path", { class: "scene-bolt", d: "M4,-46 L-6,-30 H1 L-3,-18 L9,-35 H2 Z" }, group);
+  },
+};
+
+function buildSceneNode(group, node) {
+  const element = { group };
+  group.classList.add(`tone-${node.kind}`);
+  SCENE_ICON_DRAWERS[node.id](group, element);
+  group.setAttribute("transform", `translate(${node.x},${node.y})`);
+  element.valueText = createSvgElement("text", { class: "node-value", x: 0, y: 70 }, group);
+  element.labelText = createSvgElement("text", { class: "node-label", x: 0, y: 86 }, group);
+  element.labelText.textContent = node.label;
+  return element;
+}
+
 const FLOW_LAYOUTS = {
+  scene: {
+    isScene: true,
+    viewBox: "0 0 460 500",
+    nodes: { solar: { x: 230, y: 60 }, house: { x: 230, y: 250 }, battery: { x: 70, y: 250 }, grid: { x: 390, y: 250 }, heatPump: { x: 110, y: 400 }, wallbox: { x: 350, y: 400 } },
+    paths: {
+      solarToHouse: "M230,102 L230,190", solarToBattery: "M196,70 C70,70 70,130 70,210", solarToGrid: "M264,70 C390,70 390,130 390,202",
+      batteryToHouse: "M100,250 L164,250", gridToHouse: "M362,250 L296,250",
+      houseToHeatPump: "M190,306 C190,350 110,330 110,372", houseToWallbox: "M270,306 C270,350 350,330 350,372",
+    },
+  },
   hub: {
     viewBox: "0 0 420 450",
     nodes: { solar: { x: 210, y: 50 }, house: { x: 210, y: 230 }, battery: { x: 62, y: 230 }, grid: { x: 358, y: 230 }, heatPump: { x: 105, y: 400 }, wallbox: { x: 315, y: 400 } },
@@ -250,6 +334,7 @@ function buildFlowDiagram() {
   });
   positionedNodes.forEach((node) => {
     const group = createSvgElement("g", { class: "node" }, svg);
+    if (layout.isScene) { flowElements.nodes[node.id] = buildSceneNode(group, node); return; }
     createSvgElement("rect", { class: "node-box", x: node.x - 56, y: node.y - 32, width: 112, height: 64, rx: 14 }, group);
     createSvgElement("text", { class: "node-label", x: node.x, y: node.y - 10 }, group).textContent = node.label;
     const valueText = createSvgElement("text", { class: "node-value", x: node.x, y: node.y + 14 }, group);
@@ -266,7 +351,8 @@ function buildFlowDiagram() {
 function setNodeActive(nodeId, isActive, kind) {
   const { group } = flowElements.nodes[nodeId];
   group.classList.toggle("active", isActive);
-  group.querySelector(".node-box").style.stroke = isActive ? `var(--${kind === "house" ? "accent" : kind})` : "";
+  const nodeBox = group.querySelector(".node-box");
+  if (nodeBox) nodeBox.style.stroke = isActive ? `var(--${kind === "house" ? "accent" : kind})` : "";
 }
 
 function renderFlowDiagram() {
@@ -294,7 +380,13 @@ function renderFlowDiagram() {
   nodes.grid.labelText.textContent = gridFeedInKw > gridImportKw ? "Einspeisung" : "Netzbezug";
   nodes.grid.valueText.textContent = `${kilowattFormat.format(Math.max(gridImportKw, gridFeedInKw))} kW`;
   nodes.battery.valueText.textContent = state.batteryKwh > 0 ? `${integerFormat.format(batteryFill * 100)} %` : "–";
-  nodes.battery.fillBar.setAttribute("width", 88 * batteryFill);
+  if (FLOW_LAYOUTS[state.design].isScene) {
+    const fillHeight = 58 * batteryFill;
+    nodes.battery.fillBar.setAttribute("height", fillHeight);
+    nodes.battery.fillBar.setAttribute("y", 33 - fillHeight);
+  } else {
+    nodes.battery.fillBar.setAttribute("width", 88 * batteryFill);
+  }
   nodes.heatPump.valueText.textContent = `${kilowattFormat.format(typicalDay.heatPumpKwh[hour])} kW`;
   nodes.wallbox.valueText.textContent = `${kilowattFormat.format(typicalDay.evKwh[hour])} kW`;
 
@@ -308,6 +400,12 @@ function renderFlowDiagram() {
   nodes.heatPump.group.classList.toggle("off", !state.heatPumpEnabled);
   nodes.wallbox.group.classList.toggle("off", !state.evEnabled);
 
+  if (FLOW_LAYOUTS[state.design].isScene) {
+    const sunShare = solarKw / Math.max(...typicalDay.solarKwh, 0.01);
+    nodes.solar.sunGroup.style.opacity = 0.25 + 0.75 * sunShare;
+    nodes.solar.sunGroup.style.transform = `scale(${0.8 + 0.2 * sunShare})`;
+    nodes.house.windows.forEach((windowElement) => { windowElement.style.opacity = 0.15 + 0.85 * Math.min(1, loadKw / 3); });
+  }
   const trackVisibility = { solarToBattery: state.batteryKwh > 0, batteryToHouse: state.batteryKwh > 0, houseToHeatPump: state.heatPumpEnabled, houseToWallbox: state.evEnabled };
   Object.entries(trackVisibility).forEach(([linkId, isVisible]) => { flowElements.tracks[linkId].style.opacity = isVisible ? 1 : 0; });
   document.getElementById("output-hour").textContent = `${String(hour).padStart(2, "0")}:00 Uhr`;
@@ -391,7 +489,7 @@ const CONFIG = {
   COST_WALLBOX_EUR: 1500,
   HEAT_PUMP_SAVING_VS_OLD_HEATING_EUR_PER_YEAR: 700,
   MAX_PAYBACK_YEARS_SHOWN: 30,
-  TWEEN_MS: 500,
+  DIGIT_ROLL_MS: 350,
   PLAY_STEP_MS: 650,
   PLACEHOLDER_SOURCE_LABEL: "Platzhalterdaten",
 };
@@ -537,36 +635,76 @@ function buildHourlyProfiles(monthIndex) {
   return { solarKwh, householdKwh, heatPumpKwh, evKwh, loadKwh };
 }
 
-function tweenNumber(element, targetValue, decimals = 0) {
-  const format = decimals > 0 ? numberFormat : integerFormat;
-  const startValue = Number(element.dataset.value ?? 0);
-  element.dataset.value = targetValue;
-  cancelAnimationFrame(Number(element.dataset.frame));
-  if (prefersReducedMotion) { element.textContent = format.format(targetValue); return; }
-  const startTime = performance.now();
-  const step = (now) => {
-    const progress = Math.min(1, (now - startTime) / CONFIG.TWEEN_MS);
-    const eased = 1 - (1 - progress) ** 3;
-    element.textContent = format.format(startValue + (targetValue - startValue) * eased);
-    if (progress < 1) element.dataset.frame = requestAnimationFrame(step);
+function isDigit(character) {
+  return /\d/.test(character);
+}
+
+function rollDigit(slot, oldDigit, newDigit, trend) {
+  const column = document.createElement("span");
+  column.className = "digit-column";
+  const order = trend >= 0 ? [oldDigit, newDigit] : [newDigit, oldDigit];
+  order.forEach((digit) => {
+    const cell = document.createElement("span");
+    cell.textContent = digit;
+    column.appendChild(cell);
+  });
+  slot.appendChild(column);
+
+  const frames = trend >= 0
+    ? [{ transform: "translateY(0)" }, { transform: "translateY(-50%)" }]
+    : [{ transform: "translateY(-50%)" }, { transform: "translateY(0)" }];
+  const animation = column.animate(frames, { duration: CONFIG.DIGIT_ROLL_MS, easing: "cubic-bezier(.3, .8, .3, 1)", fill: "forwards" });
+  animation.onfinish = () => {
+    if (slot.firstChild === column) slot.textContent = newDigit;
   };
-  element.dataset.frame = requestAnimationFrame(step);
+}
+
+function setRollingText(element, newText, trend = 1) {
+  const previousText = element.dataset.text ?? element.textContent;
+  element.dataset.text = newText;
+  if (previousText === newText) return;
+  if (prefersReducedMotion) { element.textContent = newText; return; }
+
+  const previousCharacters = [...previousText];
+  const newCharacters = [...newText];
+  element.textContent = "";
+  newCharacters.forEach((character, index) => {
+    const slot = document.createElement("span");
+    slot.className = "digit-slot";
+    const previousCharacter = previousCharacters[previousCharacters.length - newCharacters.length + index] ?? "0";
+    if (isDigit(character) && isDigit(previousCharacter) && previousCharacter !== character) {
+      rollDigit(slot, previousCharacter, character, trend);
+    } else {
+      slot.textContent = character === " " ? "\u00A0" : character;
+    }
+    element.appendChild(slot);
+  });
+}
+
+function setRollingNumber(element, targetValue, { decimals = 0 } = {}) {
+  const format = decimals > 0 ? numberFormat : integerFormat;
+  const trend = targetValue >= Number(element.dataset.value ?? 0) ? 1 : -1;
+  element.dataset.value = targetValue;
+  setRollingText(element, format.format(targetValue), trend);
 }
 
 function renderKpis(metrics) {
   const kpiElement = (name) => document.querySelector(`[data-kpi="${name}"]`);
-  tweenNumber(kpiElement("autarkyPercent"), metrics.autarkyPercent);
-  tweenNumber(kpiElement("selfConsumptionPercent"), metrics.selfConsumptionPercent);
-  tweenNumber(kpiElement("yearlyBenefitEur"), Math.round(metrics.yearlyBenefitEur));
+  setRollingNumber(kpiElement("autarkyPercent"), metrics.autarkyPercent);
+  setRollingNumber(kpiElement("selfConsumptionPercent"), metrics.selfConsumptionPercent);
+  setRollingNumber(kpiElement("yearlyBenefitEur"), Math.round(metrics.yearlyBenefitEur));
+
   const paybackElement = kpiElement("paybackYears");
   const paybackUnit = document.getElementById("payback-unit");
   const years = metrics.paybackYears;
-  if (years === null || years > CONFIG.MAX_PAYBACK_YEARS_SHOWN) {
-    paybackElement.dataset.value = 0;
-    paybackElement.textContent = years === null ? "–" : `> ${CONFIG.MAX_PAYBACK_YEARS_SHOWN}`;
-    paybackUnit.textContent = years === null ? "" : "Jahre";
+  if (years === null) {
+    setRollingText(paybackElement, "–");
+    paybackUnit.textContent = "";
+  } else if (years > CONFIG.MAX_PAYBACK_YEARS_SHOWN) {
+    setRollingText(paybackElement, `> ${CONFIG.MAX_PAYBACK_YEARS_SHOWN}`);
+    paybackUnit.textContent = "Jahre";
   } else {
-    tweenNumber(paybackElement, years, 1);
+    setRollingNumber(paybackElement, years, { decimals: 1 });
     paybackUnit.textContent = "Jahre";
   }
 }
